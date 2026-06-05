@@ -1,0 +1,8 @@
+{
+  "name": "@ca-manage/validators",
+  "version": "1.0.0",
+  "main": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": { "zod": "^3.23.8" },
+  "devDependencies": { "typescript": "^5.5.0" }
+}

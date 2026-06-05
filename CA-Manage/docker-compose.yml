@@ -1,0 +1,144 @@
+version: '3.9'
+
+services:
+  # ============================================================
+  # PostgreSQL Database
+  # ============================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: ca_manage_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: camanage
+      POSTGRES_PASSWORD: camanage_secret
+      POSTGRES_DB: camanage_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - '5433:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U camanage -d camanage_db']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ca_network
+
+  # ============================================================
+  # Redis Cache & Queue
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: ca_manage_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass camanage_redis
+    volumes:
+      - redis_data:/data
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - ca_network
+
+  # ============================================================
+  # NestJS API
+  # ============================================================
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: production
+    container_name: ca_manage_api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      APP_PORT: 4000
+      DATABASE_URL: postgresql://camanage:camanage_secret@postgres:5432/camanage_db
+      # Note: API container connects to postgres service (internal port 5432, not 5433)
+      REDIS_URL: redis://:camanage_redis@redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_EXPIRES: 15m
+      JWT_REFRESH_EXPIRES: 7d
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      LOCAL_STORAGE_PATH: /app/uploads
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_REGION: ${AWS_REGION:-ap-south-1}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+    volumes:
+      - uploads_data:/app/uploads
+    ports:
+      - '4000:4000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ca_network
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:4000/api/v1/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================================
+  # Next.js Web App
+  # ============================================================
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: production
+    container_name: ca_manage_web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api/v1}
+    ports:
+      - '3000:3000'
+    depends_on:
+      - api
+    networks:
+      - ca_network
+
+  # ============================================================
+  # Nginx Reverse Proxy
+  # ============================================================
+  nginx:
+    image: nginx:alpine
+    container_name: ca_manage_nginx
+    restart: unless-stopped
+    volumes:
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infrastructure/nginx/conf.d:/etc/nginx/conf.d:ro
+    ports:
+      - '80:80'
+      - '443:443'
+    depends_on:
+      - api
+      - web
+    networks:
+      - ca_network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  uploads_data:
+    driver: local
+
+networks:
+  ca_network:
+    driver: bridge

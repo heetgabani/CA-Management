@@ -1,0 +1,1061 @@
+// =============================================================
+// CA-MANAGE PRISMA SCHEMA
+// Production-Grade Multi-Tenant SaaS for CA/CS Firms
+// =============================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearch", "fullTextIndex"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================
+// ENUMS
+// =============================================================
+
+enum UserRole {
+  SUPER_ADMIN
+  FIRM_OWNER
+  PARTNER
+  MANAGER
+  ACCOUNTANT
+  EXECUTIVE
+  INTERN
+  CLIENT
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+enum ClientType {
+  INDIVIDUAL
+  PROPRIETORSHIP
+  PARTNERSHIP
+  LLP
+  PRIVATE_LIMITED
+  PUBLIC_LIMITED
+  TRUST
+  NGO
+  HUF
+  AOP
+  BOI
+}
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+  CLOSED
+  PROSPECT
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  UNDER_REVIEW
+  COMPLETED
+  CANCELLED
+  ON_HOLD
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ComplianceType {
+  GST_MONTHLY
+  GST_QUARTERLY
+  GST_ANNUAL
+  TDS_QUARTERLY
+  TDS_ANNUAL
+  INCOME_TAX
+  ADVANCE_TAX
+  AUDIT
+  ROC_ANNUAL
+  ROC_EVENT
+  PROFESSIONAL_TAX
+  PF_MONTHLY
+  ESI_MONTHLY
+  DSC_RENEWAL
+  CUSTOM
+}
+
+enum ComplianceStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  FILED
+  PENDING_APPROVAL
+  APPROVED
+  OVERDUE
+  EXEMPTED
+}
+
+enum DocumentCategory {
+  KYC
+  GST
+  INCOME_TAX
+  AUDIT
+  BANK_STATEMENTS
+  AGREEMENTS
+  LICENSES
+  ROC
+  DSC
+  TDS
+  FINANCIAL_STATEMENTS
+  INSURANCE
+  PROPERTY
+  OTHER
+}
+
+enum PhysicalFileStatus {
+  IN_OFFICE
+  ISSUED_TO_CLIENT
+  ISSUED_TO_STAFF
+  ARCHIVED
+  LOST
+  DESTROYED
+}
+
+enum ReminderType {
+  DSC_EXPIRY
+  GST_DUE
+  TDS_DUE
+  AUDIT_DUE
+  ROC_DUE
+  INCOME_TAX_DUE
+  COMPLIANCE_DUE
+  DOCUMENT_EXPIRY
+  CUSTOM
+}
+
+enum ReminderChannel {
+  IN_APP
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum ReminderStatus {
+  ACTIVE
+  SENT
+  DISMISSED
+  EXPIRED
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_DUE
+  TASK_COMPLETED
+  DOCUMENT_UPLOADED
+  DOCUMENT_EXPIRY
+  COMPLIANCE_DUE
+  REMINDER
+  STAFF_INVITED
+  CLIENT_ADDED
+  SYSTEM
+}
+
+enum AuditAction {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  DOWNLOAD
+  UPLOAD
+  SHARE
+  RESTORE
+  ARCHIVE
+}
+
+enum StorageProvider {
+  LOCAL
+  AWS_S3
+  MINIO
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  CANCELLED
+}
+
+enum LeadSource {
+  REFERRAL
+  WEBSITE
+  SOCIAL_MEDIA
+  DIRECT
+  ADVERTISEMENT
+  OTHER
+}
+
+// =============================================================
+// TENANT (ROOT ENTITY)
+// =============================================================
+
+model Tenant {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  isActive    Boolean  @default(true)
+  plan        String   @default("starter")
+  planExpiry  DateTime?
+  maxUsers    Int      @default(10)
+  maxStorage  BigInt   @default(10737418240) // 10GB in bytes
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  firms            Firm[]
+  users            User[]
+  clients          Client[]
+  documents        Document[]
+  tasks            Task[]
+  compliances      Compliance[]
+  reminders        Reminder[]
+  physicalFiles    PhysicalFile[]
+  auditLogs        AuditLog[]
+  notifications    Notification[]
+  storageUsage     StorageUsage[]
+  notes            Note[]
+  activities       Activity[]
+  invites          Invite[]
+
+  @@map("tenants")
+}
+
+// =============================================================
+// FIRM
+// =============================================================
+
+model Firm {
+  id           String   @id @default(cuid())
+  tenantId     String
+  name         String
+  displayName  String?
+  gstNumber    String?
+  pan          String?
+  tan          String?
+  cin          String?
+  email        String?
+  phone        String?
+  website      String?
+  logoUrl      String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  addresses    FirmAddress[]
+  branches     Branch[]
+  users        User[]
+  clients      Client[]
+
+  @@index([tenantId])
+  @@map("firms")
+}
+
+model FirmAddress {
+  id         String  @id @default(cuid())
+  firmId     String
+  line1      String
+  line2      String?
+  city       String
+  state      String
+  pincode    String
+  country    String  @default("India")
+  isPrimary  Boolean @default(true)
+
+  firm       Firm    @relation(fields: [firmId], references: [id], onDelete: Cascade)
+
+  @@index([firmId])
+  @@map("firm_addresses")
+}
+
+model Branch {
+  id        String   @id @default(cuid())
+  tenantId  String
+  firmId    String
+  name      String
+  code      String?
+  email     String?
+  phone     String?
+  address   String?
+  city      String?
+  state     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  firm      Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  users     User[]
+  clients   Client[]
+
+  @@index([tenantId])
+  @@index([firmId])
+  @@map("branches")
+}
+
+// =============================================================
+// USER
+// =============================================================
+
+model User {
+  id                   String     @id @default(cuid())
+  tenantId             String
+  firmId               String?
+  branchId             String?
+  email                String
+  passwordHash         String
+  firstName            String
+  lastName             String
+  displayName          String?
+  phone                String?
+  avatarUrl            String?
+  role                 UserRole   @default(EXECUTIVE)
+  status               UserStatus @default(PENDING_VERIFICATION)
+  isEmailVerified      Boolean    @default(false)
+  twoFactorEnabled     Boolean    @default(false)
+  twoFactorSecret      String?
+  lastLoginAt          DateTime?
+  lastLoginIp          String?
+  passwordChangedAt    DateTime?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  // Relations
+  tenant               Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  firm                 Firm?      @relation(fields: [firmId], references: [id])
+  branch               Branch?    @relation(fields: [branchId], references: [id])
+  sessions             UserSession[]
+  auditLogs            AuditLog[]
+  notifications        Notification[]
+  assignedTasks        Task[]     @relation("TaskAssignee")
+  createdTasks         Task[]     @relation("TaskCreator")
+  notes                Note[]
+  activities           Activity[]
+  assignedCompliances  Compliance[] @relation("ComplianceAssignee")
+  uploadedDocuments    Document[] @relation("DocumentUploader")
+  physicalFileIssuance PhysicalFileMovement[] @relation("IssuedTo")
+  physicalFileMoved    PhysicalFileMovement[] @relation("MovedBy")
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([firmId])
+  @@map("users")
+}
+
+model UserSession {
+  id           String   @id @default(cuid())
+  userId       String
+  tenantId     String
+  refreshToken String   @unique
+  deviceInfo   String?
+  ipAddress    String?
+  userAgent    String?
+  isActive     Boolean  @default(true)
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([refreshToken])
+  @@map("user_sessions")
+}
+
+model OtpCode {
+  id        String   @id @default(cuid())
+  email     String
+  otp       String
+  purpose   String
+  attempts  Int      @default(0)
+  isUsed    Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email, purpose])
+  @@map("otp_codes")
+}
+
+model Invite {
+  id         String       @id @default(cuid())
+  tenantId   String
+  firmId     String?
+  email      String
+  role       UserRole
+  token      String       @unique
+  status     InviteStatus @default(PENDING)
+  invitedBy  String
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime     @default(now())
+
+  tenant     Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([token])
+  @@map("invites")
+}
+
+// =============================================================
+// CLIENT
+// =============================================================
+
+model Client {
+  id                 String       @id @default(cuid())
+  tenantId           String
+  firmId             String
+  branchId           String?
+
+  // Identification
+  clientCode         String?
+  fileNumber         String?
+
+  // Basic Info
+  clientType         ClientType   @default(INDIVIDUAL)
+  firstName          String?
+  lastName           String?
+  displayName        String
+  tradeName          String?
+  businessName       String?
+
+  // Contact
+  primaryMobile      String?
+  alternateMobile    String?
+  primaryEmail       String?
+  alternateEmail     String?
+
+  // Professional IDs
+  pan                String?
+  aadhaar            String?
+  gstin              String?
+  tan                String?
+  cin                String?
+  llpin              String?
+  iec                String?
+  msmeNumber         String?
+  udyamNumber        String?
+  passportNumber     String?
+
+  // Internal
+  leadSource         LeadSource?
+  referredBy         String?
+  assignedPartnerId  String?
+  assignedAccountantId String?
+  status             ClientStatus @default(ACTIVE)
+
+  // Dates
+  incorporationDate  DateTime?
+  dateOfBirth        DateTime?
+  onboardedAt        DateTime     @default(now())
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  // Avatar
+  avatarUrl          String?
+  notes              String?      @db.Text
+
+  // Relations
+  tenant             Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  firm               Firm         @relation(fields: [firmId], references: [id])
+  branch             Branch?      @relation(fields: [branchId], references: [id])
+  addresses          ClientAddress[]
+  contacts           ClientContact[]
+  documents          Document[]
+  documentFolders    DocumentFolder[]
+  tasks              Task[]
+  compliances        Compliance[]
+  reminders          Reminder[]
+  physicalFiles      PhysicalFile[]
+  activities         Activity[]
+  clientNotes        Note[]
+  timeline           ClientTimeline[]
+  portalAccess       ClientPortalAccess?
+
+  @@unique([tenantId, clientCode])
+  @@unique([tenantId, fileNumber])
+  @@index([tenantId])
+  @@index([firmId])
+  @@index([pan])
+  @@index([gstin])
+  @@index([status])
+  @@map("clients")
+}
+
+model ClientAddress {
+  id         String  @id @default(cuid())
+  clientId   String
+  tenantId   String
+  type       String  @default("PRIMARY")
+  line1      String
+  line2      String?
+  city       String?
+  state      String?
+  pincode    String?
+  country    String  @default("India")
+  isPrimary  Boolean @default(false)
+
+  client     Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([tenantId])
+  @@map("client_addresses")
+}
+
+model ClientContact {
+  id           String  @id @default(cuid())
+  clientId     String
+  tenantId     String
+  name         String
+  designation  String?
+  email        String?
+  phone        String?
+  isPrimary    Boolean @default(false)
+
+  client       Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@map("client_contacts")
+}
+
+model ClientPortalAccess {
+  id           String   @id @default(cuid())
+  clientId     String   @unique
+  tenantId     String
+  email        String
+  passwordHash String
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+
+  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("client_portal_access")
+}
+
+model ClientTimeline {
+  id          String   @id @default(cuid())
+  clientId    String
+  tenantId    String
+  userId      String?
+  action      String
+  description String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([tenantId])
+  @@map("client_timeline")
+}
+
+// =============================================================
+// DOCUMENTS & FILE LOCKER
+// =============================================================
+
+model DocumentFolder {
+  id          String           @id @default(cuid())
+  tenantId    String
+  clientId    String
+  parentId    String?
+  name        String
+  description String?
+  color       String?
+  icon        String?
+  isSystem    Boolean          @default(false)
+  sortOrder   Int              @default(0)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  client      Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  parent      DocumentFolder?  @relation("FolderHierarchy", fields: [parentId], references: [id])
+  children    DocumentFolder[] @relation("FolderHierarchy")
+  documents   Document[]
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@map("document_folders")
+}
+
+model Document {
+  id              String           @id @default(cuid())
+  tenantId        String
+  clientId        String
+  folderId        String?
+  uploadedById    String
+
+  // File Info
+  name            String
+  originalName    String
+  description     String?
+  category        DocumentCategory @default(OTHER)
+  mimeType        String
+  size            BigInt
+  extension       String
+  storageKey      String
+  storageProvider StorageProvider  @default(LOCAL)
+  checksum        String?
+
+  // Version
+  version         Int              @default(1)
+  isLatest        Boolean          @default(true)
+  parentDocId     String?
+
+  // Metadata
+  tags            String[]
+  expiryDate      DateTime?
+  financialYear   String?
+  remarks         String?
+
+  // Access
+  isShared        Boolean          @default(false)
+  isEncrypted     Boolean          @default(false)
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  deletedAt       DateTime?
+
+  // Relations
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client          Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  folder          DocumentFolder?  @relation(fields: [folderId], references: [id])
+  uploadedBy      User             @relation("DocumentUploader", fields: [uploadedById], references: [id])
+  versions        DocumentVersion[]
+  shares          FileShare[]
+  activities      Activity[]
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([category])
+  @@index([isLatest])
+  @@map("documents")
+}
+
+model DocumentVersion {
+  id           String   @id @default(cuid())
+  documentId   String
+  tenantId     String
+  version      Int
+  storageKey   String
+  size         BigInt
+  checksum     String?
+  changelog    String?
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([tenantId])
+  @@map("document_versions")
+}
+
+model FileShare {
+  id           String    @id @default(cuid())
+  tenantId     String
+  documentId   String
+  sharedByUserId String
+  sharedWithEmail String?
+  sharedWithUserId String?
+  token        String    @unique
+  expiresAt    DateTime?
+  downloadLimit Int?
+  downloadCount Int      @default(0)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+
+  document     Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([token])
+  @@map("file_shares")
+}
+
+// =============================================================
+// TASKS
+// =============================================================
+
+model Task {
+  id            String       @id @default(cuid())
+  tenantId      String
+  firmId        String?
+  clientId      String?
+  title         String
+  description   String?      @db.Text
+  status        TaskStatus   @default(PENDING)
+  priority      TaskPriority @default(MEDIUM)
+  assigneeId    String?
+  createdById   String
+  dueDate       DateTime?
+  startDate     DateTime?
+  completedAt   DateTime?
+  estimatedHrs  Float?
+  actualHrs     Float?
+  tags          String[]
+  isRecurring   Boolean      @default(false)
+  recurrenceRule String?
+  parentTaskId  String?
+  sortOrder     Int          @default(0)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client        Client?      @relation(fields: [clientId], references: [id])
+  assignee      User?        @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  createdBy     User         @relation("TaskCreator", fields: [createdById], references: [id])
+  parentTask    Task?        @relation("TaskHierarchy", fields: [parentTaskId], references: [id])
+  subTasks      Task[]       @relation("TaskHierarchy")
+  comments      TaskComment[]
+  attachments   TaskAttachment[]
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([assigneeId])
+  @@index([status])
+  @@index([dueDate])
+  @@map("tasks")
+}
+
+model TaskComment {
+  id         String   @id @default(cuid())
+  taskId     String
+  tenantId   String
+  userId     String
+  content    String   @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@map("task_comments")
+}
+
+model TaskAttachment {
+  id           String   @id @default(cuid())
+  taskId       String
+  tenantId     String
+  name         String
+  storageKey   String
+  size         BigInt
+  mimeType     String
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  task         Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@map("task_attachments")
+}
+
+// =============================================================
+// NOTES
+// =============================================================
+
+model Note {
+  id          String   @id @default(cuid())
+  tenantId    String
+  clientId    String?
+  userId      String
+  title       String?
+  content     String   @db.Text
+  isPinned    Boolean  @default(false)
+  isPrivate   Boolean  @default(false)
+  mentions    String[]
+  tags        String[]
+  color       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client      Client?  @relation(fields: [clientId], references: [id])
+  author      User     @relation(fields: [userId], references: [id])
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([userId])
+  @@map("notes")
+}
+
+// =============================================================
+// COMPLIANCE TRACKER
+// =============================================================
+
+model Compliance {
+  id              String           @id @default(cuid())
+  tenantId        String
+  clientId        String
+  assigneeId      String?
+  type            ComplianceType
+  title           String
+  description     String?
+  status          ComplianceStatus @default(NOT_STARTED)
+  priority        TaskPriority     @default(MEDIUM)
+  dueDate         DateTime
+  filedDate       DateTime?
+  period          String?
+  financialYear   String?
+  remarks         String?
+  tags            String[]
+  isRecurring     Boolean          @default(false)
+  recurrenceRule  String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  completedAt     DateTime?
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client          Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  assignee        User?            @relation("ComplianceAssignee", fields: [assigneeId], references: [id])
+  reminders       Reminder[]
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([type])
+  @@index([status])
+  @@index([dueDate])
+  @@map("compliances")
+}
+
+// =============================================================
+// REMINDERS
+// =============================================================
+
+model Reminder {
+  id            String          @id @default(cuid())
+  tenantId      String
+  clientId      String?
+  complianceId  String?
+  createdById   String
+  title         String
+  description   String?
+  type          ReminderType    @default(CUSTOM)
+  status        ReminderStatus  @default(ACTIVE)
+  dueDate       DateTime
+  reminderDates DateTime[]
+  channels      ReminderChannel[]
+  isSent        Boolean         @default(false)
+  sentAt        DateTime?
+  dismissedAt   DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client        Client?         @relation(fields: [clientId], references: [id])
+  compliance    Compliance?     @relation(fields: [complianceId], references: [id])
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([dueDate])
+  @@index([status])
+  @@map("reminders")
+}
+
+// =============================================================
+// PHYSICAL FILE MANAGEMENT
+// =============================================================
+
+model PhysicalFile {
+  id            String             @id @default(cuid())
+  tenantId      String
+  clientId      String
+  fileNumber    String
+  description   String?
+  boxNumber     String?
+  shelfNumber   String?
+  bagNumber     String?
+  cabinetNumber String?
+  rackNumber    String?
+  location      String?
+  building      String?
+  floor         String?
+  status        PhysicalFileStatus @default(IN_OFFICE)
+  issuedToId    String?
+  issuedToName  String?
+  issuedDate    DateTime?
+  expectedReturn DateTime?
+  returnedDate  DateTime?
+  remarks       String?
+  tags          String[]
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  tenant        Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client        Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  movements     PhysicalFileMovement[]
+
+  @@unique([tenantId, fileNumber])
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([status])
+  @@map("physical_files")
+}
+
+model PhysicalFileMovement {
+  id            String   @id @default(cuid())
+  physicalFileId String
+  tenantId      String
+  movedById     String
+  issuedToId    String?
+  fromLocation  String?
+  toLocation    String?
+  action        String
+  reason        String?
+  createdAt     DateTime @default(now())
+
+  physicalFile  PhysicalFile @relation(fields: [physicalFileId], references: [id], onDelete: Cascade)
+  movedBy       User         @relation("MovedBy", fields: [movedById], references: [id])
+  issuedTo      User?        @relation("IssuedTo", fields: [issuedToId], references: [id])
+
+  @@index([physicalFileId])
+  @@index([tenantId])
+  @@map("physical_file_movements")
+}
+
+// =============================================================
+// ACTIVITIES & AUDIT
+// =============================================================
+
+model Activity {
+  id          String   @id @default(cuid())
+  tenantId    String
+  clientId    String?
+  userId      String?
+  documentId  String?
+  entityType  String
+  entityId    String
+  action      String
+  description String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client      Client?  @relation(fields: [clientId], references: [id])
+  user        User?    @relation(fields: [userId], references: [id])
+  document    Document? @relation(fields: [documentId], references: [id])
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([entityType, entityId])
+  @@map("activities")
+}
+
+model AuditLog {
+  id           String      @id @default(cuid())
+  tenantId     String
+  userId       String?
+  action       AuditAction
+  entityType   String
+  entityId     String?
+  description  String
+  oldValues    Json?
+  newValues    Json?
+  ipAddress    String?
+  userAgent    String?
+  deviceInfo   String?
+  status       String      @default("SUCCESS")
+  createdAt    DateTime    @default(now())
+
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User?       @relation(fields: [userId], references: [id])
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// =============================================================
+// NOTIFICATIONS
+// =============================================================
+
+model Notification {
+  id         String           @id @default(cuid())
+  tenantId   String
+  userId     String
+  type       NotificationType
+  title      String
+  body       String
+  link       String?
+  metadata   Json?
+  isRead     Boolean          @default(false)
+  readAt     DateTime?
+  createdAt  DateTime         @default(now())
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([isRead])
+  @@map("notifications")
+}
+
+// =============================================================
+// STORAGE USAGE
+// =============================================================
+
+model StorageUsage {
+  id          String   @id @default(cuid())
+  tenantId    String
+  clientId    String?
+  category    String?
+  usedBytes   BigInt   @default(0)
+  fileCount   Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, clientId, category])
+  @@index([tenantId])
+  @@map("storage_usage")
+}
+
+// =============================================================
+// ROLE PERMISSIONS
+// =============================================================
+
+model Permission {
+  id          String   @id @default(cuid())
+  module      String
+  action      String
+  description String?
+
+  rolePermissions RolePermission[]
+
+  @@unique([module, action])
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String   @id @default(cuid())
+  tenantId     String
+  role         UserRole
+  permissionId String
+  granted      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, role, permissionId])
+  @@index([tenantId, role])
+  @@map("role_permissions")
+}
