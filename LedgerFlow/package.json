@@ -1,0 +1,37 @@
+{
+  "name": "ledgerflow",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LedgerFlow — The Digital Operating System For Professional Firms",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "db:generate": "pnpm --filter @ledgerflow/database db:generate",
+    "db:push": "pnpm --filter @ledgerflow/database db:push",
+    "db:migrate": "pnpm --filter @ledgerflow/database db:migrate",
+    "db:studio": "pnpm --filter @ledgerflow/database db:studio",
+    "db:seed": "pnpm --filter @ledgerflow/database db:seed",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "prettier": "^3.3.0",
+    "typescript": "^5.5.0",
+    "@types/node": "^20.14.0",
+    "eslint": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.0.0"
+}
